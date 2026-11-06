@@ -13,9 +13,11 @@ class StuckJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, TracksServer;
 
-    public int $timeout = 600;
-
-    public function __construct(public int $id = 0)
+    /**
+     * @param  int  $timeout  Seconds before the worker gives up on the job.
+     *                        Orphan release only picks up jobs past it.
+     */
+    public function __construct(public int $id = 0, public int $timeout = 600)
     {
         $this->initializeServerTracking();
         $this->onQueue('reports');

@@ -7,6 +7,8 @@ use Illuminate\Console\Command;
 
 class SimulateOrphan extends Command
 {
+    private const STUCK_JOB_TIMEOUT = 30;
+
     protected $signature = 'demo:simulate-orphan
                             {--count=1 : Number of orphan scenarios to create}';
 
@@ -18,7 +20,9 @@ class SimulateOrphan extends Command
 
         $this->info("Dispatching {$count} StuckJob(s) to the reports queue...");
         for ($i = 1; $i <= $count; $i++) {
-            StuckJob::dispatch($i);
+            // A short timeout, so the orphan becomes releasable within a minute:
+            // the package only releases jobs that have run past their timeout.
+            StuckJob::dispatch($i, self::STUCK_JOB_TIMEOUT);
         }
 
         $this->info('Waiting 6 seconds for Horizon to reserve them...');
@@ -71,8 +75,15 @@ class SimulateOrphan extends Command
 
         $this->info('Horizon process tree killed. The reserved StuckJob(s) are now orphaned.');
         $this->newLine();
-        $this->info('To surface the orphaned job(s), run:');
+        $this->info('About 15s from now (once Horizon\'s record of the killed master expires), list the orphaned job(s):');
         $this->comment('  php artisan horizon:running-jobs --orphaned');
+        $this->newLine();
+        $this->info(sprintf(
+            'Release them once they have run past their %ds timeout (about %ds after dispatch):',
+            self::STUCK_JOB_TIMEOUT,
+            self::STUCK_JOB_TIMEOUT + 10
+        ));
+        $this->comment('  php artisan horizon:release --orphaned');
         $this->newLine();
         $this->line('Or inspect the raw Redis entry directly:');
         $this->comment('  redis-cli ZRANGE laravel-database-queues:reports:reserved 0 -1 WITHSCORES');
