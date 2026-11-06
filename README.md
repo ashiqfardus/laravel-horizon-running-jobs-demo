@@ -86,17 +86,24 @@ The 30-60s SlowReportJobs will show up and trigger the long-running-threshold wa
 
 ```bash
 php artisan demo:simulate-orphan
-# Dispatches a StuckJob, waits for a worker to reserve it, then SIGKILLs the worker.
-# Job remains in queues:reports:reserved but no live worker owns it.
+# Dispatches a StuckJob with a 30s timeout, waits for a worker to reserve it,
+# then SIGKILLs the whole Horizon process tree (master, supervisor, workers).
+# The job stays in the reserved set, but no live supervisor owns it.
+
+php artisan horizon:running-jobs --orphaned   # flagged as orphan ~15s after the kill
+php artisan horizon:release --orphaned        # releases it once it has run past its timeout
 ```
+
+Timing, measured on this demo:
+
+- **~15 seconds after the kill** the job is flagged as an orphan. Until then Horizon's own record of the killed master (15-second TTL) still lists its supervisor as managed, so the package treats it as alive.
+- **~40 seconds after dispatch** it becomes releasable. The package only releases a job that has run past its timeout (30s here) plus 10 seconds, because before that a worker may still be finishing it. Until then `horizon:release --orphaned` reports nothing to release, and the dashboard shows when release becomes available.
 
 Inspect raw Redis to confirm:
 
 ```bash
-redis-cli ZRANGE queues:reports:reserved 0 -1 WITHSCORES
+redis-cli ZRANGE laravel-database-queues:reports:reserved 0 -1 WITHSCORES
 ```
-
-Once the package's `--orphaned` flag ships (Phase 4 of the implementation plan), this is the scenario that validates it.
 
 ### Distributed mode on one machine
 
